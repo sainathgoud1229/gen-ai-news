@@ -21,7 +21,3 @@ services:
         value: https://genai-n8n-server.onrender.com/
       - key: GENERIC_TIMEZONE
         value: Asia/Kolkata
-    disk:
-      name: n8n-data
-      mountPath: /home/node/.n8n
-      sizeGB: 1

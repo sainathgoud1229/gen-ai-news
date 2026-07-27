@@ -280,9 +280,6 @@ Feedback and workflow forks are welcome! If you add a new source or delivery cha
 ---
 
 <div align="center">
-
-**Built with ❤️ using n8n + Google Gemini**
-
-*Star ⭐ the repo if this saves you time every morning!*
+I WILL BUILT WITH PASSION WITH INTREST IN AI.
 
 </div>

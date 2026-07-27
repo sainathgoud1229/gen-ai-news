@@ -127,3 +127,11 @@ genai-n8n/
 
 <br/>
 
+
+## ?? Future Roadmap
+
+While this is a minor portfolio project demonstrating core AI integration concepts, there are several ways it can be expanded in the future:
+*   **Vector Database Integration (RAG):** Connect to Pinecone or Qdrant to store historical articles, allowing the AI to reference past context and detect long-term industry trends.
+*   **Web Scraping Node:** Instead of relying just on RSS summaries, implement a Puppeteer/HTTP node to scrape the full article text before feeding it to Gemini for deeper analysis.
+*   **Multi-Agent Architecture:** Use advanced LangChain nodes to deploy a 'Researcher Agent' to fetch data and a 'Writer Agent' to draft the email, passing data between them.
+

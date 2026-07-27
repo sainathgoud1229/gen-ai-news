@@ -1,6 +1,16 @@
 # 🤖 Daily GenAI & Agentic AI Career Briefing
 
-An automated news aggregation and synthesis pipeline built in **n8n** that collects, filters, and summarizes the latest Generative AI and Agentic AI news every morning, delivering a structured career briefing directly to your email inbox.
+> An automated **n8n** pipeline that wakes up every morning, scrapes the latest GenAI & Agentic AI news from two live sources, deduplicates them using stateful memory, lets **Google Gemini** extract a structured JSON briefing, and delivers a beautiful HTML email digest directly to your Gmail inbox — **zero clicks required**.
+
+<div align="center">
+
+![n8n](https://img.shields.io/badge/n8n-FF6D5A?style=for-the-badge&logo=n8n&logoColor=white)
+![Google Gemini](https://img.shields.io/badge/Google%20Gemini-4285F4?style=for-the-badge&logo=googlegemini&logoColor=white)
+![Gmail API](https://img.shields.io/badge/Gmail%20API-EA4335?style=for-the-badge&logo=gmail&logoColor=white)
+![Workflow Automation](https://img.shields.io/badge/Workflow%20Automation-6366F1?style=for-the-badge)
+![No Code](https://img.shields.io/badge/No--Code-8B5CF6?style=for-the-badge)
+
+</div>
 
 ---
 
@@ -10,28 +20,55 @@ An automated news aggregation and synthesis pipeline built in **n8n** that colle
 
 ![How It Works](assets/how_it_works_sketch.png)
 
-*↑ End-to-end 5-step automation pipeline*
+*↑ End-to-end 6-step automation pipeline — pencil sketch overview*
 
 </div>
 
-The pipeline runs automatically every day using the following sequential steps:
+The workflow runs automatically every day via a **cron schedule**. Here's what happens under the hood:
 
-1. **Trigger**: The automation starts at **8:00 AM** daily.
-2. **Collect**: Feeds from **Google News RSS** and **Hacker News API** are crawled in parallel.
-3. **Filter**: The stories are merged, deduplicated via stateful storage, and filtered for the top 15 freshest stories.
-4. **AI Parser**: Google Gemini (`gemini-3.1-flash-lite`) analyzes the headlines and extracts a **Structured JSON Schema** containing Market Sentiment, Top News, Tools, and Skills.
-5. **Template**: A custom JavaScript Code Node parses the JSON and compiles it into a beautifully styled HTML template.
-6. **Deliver**: The final HTML digest is dispatched securely to your Gmail inbox.
+| Step | Node | What It Does |
+|:----:|:-----|:-------------|
+| **1** | `Daily Trigger (Cron)` | Fires at **8:00 AM** daily. Two parallel triggers kick off the Google News and Hacker News branches simultaneously. |
+| **2** | `Fetch Google News RSS` | Hits Google News RSS with a targeted query: `"agentic AI" OR "generative AI" OR "AI agent" OR "AI tool" OR "AI regulation"` |
+| **2** | `Fetch Hacker News` | Calls the **Hacker News Algolia API** (`search_by_date?query=AI agent`) to pull the 20 most recent stories. |
+| **3** | `Combine → Dedupe & Filter` | Merges both feeds. A custom JavaScript node checks **workflow static data** to skip already-seen URLs, filters to the last 24 hours, sorts by recency, and keeps the **top 15 freshest** articles. |
+| **4** | `Has New Items?` | A gatekeeping filter node. If `count == 0`, the workflow **stops immediately** — no blank emails sent. |
+| **5** | `Build Career Briefing (Gemini)` | Feeds the 15 headlines into **`gemini-3.1-flash-lite`** with a strict structured JSON prompt. Extracts: Market Sentiment, Top News + Impact, Models & Tools, Skills to Learn, Industry Impact. |
+| **6** | `Format HTML Email` | A JavaScript Code Node parses the JSON and compiles a clean, fully-styled HTML email template. |
+| **7** | `Send Email Digest` | Dispatches the HTML email via **Gmail OAuth SMTP** to your inbox. |
 
 ---
 
 ## 🧠 AI Engineering Highlights
 
-This project was designed to demonstrate production-grade AI engineering patterns beyond simple prompting:
+This project demonstrates production-grade AI engineering patterns beyond simple prompting:
 
-*   **Structured LLM Outputs (JSON)**: Instead of relying on fragile free-text generation, the Gemini LLM is constrained to output a strict JSON schema containing arrays and nested objects. This ensures reliable data extraction.
-*   **Separation of Concerns**: AI processing is strictly separated from presentation logic. The LLM only handles data extraction, while a downstream JavaScript Node handles the HTML UI templating.
-*   **Market Sentiment Analysis**: The workflow doesn't just summarize; it uses the LLM as an analytical engine to grade the overall tone of the industry (e.g., Bullish or Bearish) based on the latest headlines.
+### ✅ Structured LLM Outputs (JSON Schema Enforcement)
+Instead of relying on fragile free-text generation, Gemini is constrained via a **strict JSON schema prompt**. The output schema is enforced at the prompt level:
+```json
+{
+  "sentiment":       { "score": "Bullish | Bearish | Neutral", "reason": "..." },
+  "top_news":        [{ "headline": "...", "impact": "..." }],
+  "models_tools":    ["tool1", "tool2"],
+  "skills":          [{ "skill": "...", "reason": "..." }],
+  "industry_impact": "..."
+}
+```
+A downstream JavaScript node strips any leaked markdown fences and `JSON.parse()`s safely.
+
+### ✅ Stateful Deduplication via Workflow Memory
+The deduplication node uses **`$getWorkflowStaticData('global')`** — n8n's built-in stateful storage — to maintain a rolling list of up to 500 sent article URLs across runs. This means you **never receive the same article twice**, even across multiple days.
+
+### ✅ Separation of Concerns
+AI processing is strictly separated from presentation logic:
+- 🤖 **LLM** → handles only data extraction
+- 🖥️ **JS Code Node** → handles all HTML templating
+
+### ✅ Gatekeeping Filter (No Blank Emails)
+Before invoking Gemini, the workflow checks `count > 0`. If there are no fresh articles (e.g., a weekend with low news volume), execution stops and **no API calls are made**.
+
+### ✅ Market Sentiment Analysis
+The AI is used as an **analytical engine** to grade the overall tone of today's AI news as `Bullish`, `Bearish`, or `Neutral`, with a one-sentence rationale.
 
 ---
 
@@ -41,56 +78,119 @@ This project was designed to demonstrate production-grade AI engineering pattern
 
 ![System Architecture](assets/architecture_sketch.png)
 
-*↑ Logical node routing, decision branching, and filters*
+*↑ Node routing, parallel fetch branches, decision gatekeeping, and AI synthesis — pencil sketch*
 
 </div>
 
-### Technical Highlights
+### Node Map
 
-*   **Stateful Deduplication**: A custom JavaScript block interacts with n8n workflow static metadata to track historically processed links, ensuring you never receive duplicate articles across days.
-*   **Gatekeeping Filter**: Prior to generating the briefing, the workflow counts the number of fresh articles. If no new posts are available, the execution stops, preventing blank emails.
-*   **Gemini AI Engine**: Utilizes `gemini-3.1-flash-lite` to draft the HTML-formatted sections, maintaining high execution speed while minimizing API resource usage.
-*   **Gmail SMTP Integration**: Integrates directly with Google's OAuth protocol to securely authenticate and dispatch emails.
+```
+[Daily Trigger - News] ──→ [Fetch Google News RSS] ──┐
+                                                       ├──→ [Combine News Sources]
+[Daily Trigger - HN]   ──→ [Fetch Hacker News]  ──→  │
+                              [Split HN Hits]   ──────┘
+                                                       ↓
+                                          [Dedupe, Filter & Build Digest]
+                                                       ↓
+                                            [Has New Items? (Filter)]
+                                                       ↓ YES
+                                          [Build Career Briefing]  ←── [Gemini Model]
+                                                       ↓
+                                          [Format HTML Email (JS)]
+                                                       ↓
+                                           [Send Email Digest (Gmail)]
+```
+
+---
+
+## 📧 What the Email Looks Like
+
+The delivered HTML email contains 5 structured sections:
+
+| Section | Content |
+|:--------|:--------|
+| **Market Sentiment** | `Bullish / Bearish / Neutral` + one-line rationale |
+| **🔥 Top News Today** | Up to 5 headlines with `impact` summary per article |
+| **🤖 New Models & Tools** | Extracted tool names mentioned in today's news |
+| **🛠️ Skills to Improve** | Recommended skills with context on why they're trending |
+| **💼 Industry Impact** | 2-3 sentence analysis of what this means for engineering roles |
 
 ---
 
 ## ⚡ Quick Start & Import
 
-You can launch this exact workflow in your own n8n instance in a few simple steps.
+<div align="center">
 
-### Step 1: Import Workflow File
-*   Download [genai-daily-career-briefing.json](genai-daily-career-briefing.json).
-*   Open n8n, click the **`+`** icon on the top-left, select **Import from File**, and upload the `.json` file.
+![Setup Steps](assets/setup_steps.png)
 
-### Step 2: Set Credentials
-Locate the setup nodes inside n8n to connect your accounts:
-*   **Gemini Model**: Paste your Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey).
-*   **Send Email Digest**: Sign in using Google OAuth credentials for your Gmail mailbox.
+*↑ 4-step setup — up and running in under 5 minutes*
 
-### Step 3: Configure Recipient
-*   Open the **Send Email Digest** node settings.
-*   Change the target email in the `sendTo` field from `YOUR_EMAIL@gmail.com` to **your personal email address**.
+</div>
 
-### Step 4: Turn It On!
-*   Toggle the switch in the top-right corner to **Active** to schedule the automated daily briefings.
-*   *Optional:* Click **Execute Workflow** at the bottom of the canvas to run a test execution immediately.
+### Step 1: Get n8n Running
+
+**Option A — Docker (Recommended)**
+```bash
+# Copy environment template
+cp .env.example .env
+# Fill in your values in .env, then:
+docker compose up -d
+# Open: http://localhost:5678
+```
+
+**Option B — n8n Cloud**
+Sign up at [n8n.io](https://n8n.io) and use the cloud editor directly.
+
+---
+
+### Step 2: Import the Workflow
+1. Download [`genai-daily-career-briefing.json`](genai-daily-career-briefing.json)
+2. In n8n, click **`+`** (top-left) → **Import from File**
+3. Upload the `.json` file
+
+---
+
+### Step 3: Set Credentials
+
+You need to configure **2 credentials** inside n8n:
+
+**Gemini API Key**
+- Go to [Google AI Studio](https://aistudio.google.com/apikey) → Create API Key
+- In n8n: open the **`Gemini Model`** node → paste your key
+
+**Gmail OAuth**
+- Set up a Google Cloud project and OAuth 2.0 credentials
+- Guide: [n8n Google OAuth docs](https://docs.n8n.io/integrations/builtin/credentials/google/oauth-single-service/)
+- In n8n: open **`Send Email Digest`** node → connect your Gmail account
+
+---
+
+### Step 4: Set Your Recipient Email
+- Open the **`Send Email Digest`** node
+- Change `YOUR_EMAIL@gmail.com` in the `sendTo` field to **your actual email**
+
+---
+
+### Step 5: Activate!
+- Toggle the workflow to **Active** (top-right switch)
+- *(Optional)* Click **Execute Workflow** to trigger an immediate test run
 
 ---
 
 ## 🔐 Configuration & Security
 
-Credentials and configuration parameters can be stored securely inside environment files to prevent accidental leakage:
+```bash
+# 1. Copy the template
+cp .env.example .env
 
-1. Copy the setup file template:
-   ```bash
-   cp .env.example .env
-   ```
-2. Open `.env` and fill in your values:
-   *   `GEMINI_API_KEY`: API access token.
-   *   `RECIPIENT_EMAIL`: Briefing destination address.
-   *   `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET`: Google OAuth application credentials.
+# 2. Fill in your values
+GEMINI_API_KEY=your_gemini_api_key_here
+RECIPIENT_EMAIL=your_email@gmail.com
+GMAIL_CLIENT_ID=your_google_client_id_here
+GMAIL_CLIENT_SECRET=your_google_client_secret_here
+```
 
-*Note: The `.env` file is excluded from Git tracking via `.gitignore` to keep credentials completely local.*
+> ⚠️ The `.env` file is excluded from Git via `.gitignore`. **Never commit real credentials.**
 
 ---
 
@@ -98,40 +198,91 @@ Credentials and configuration parameters can be stored securely inside environme
 
 ```text
 genai-n8n/
-├── assets/                          # Workflow diagrams
-│   ├── how_it_works_sketch.png     # Pencil sketch - Workflow steps
-│   └── architecture_sketch.png     # Whiteboard sketch - System architecture
-├── genai-daily-career-briefing.json # Complete n8n workflow file
-├── .env.example                     # Env variable template
-├── .gitignore                       # Ignored file list
-└── README.md                        # Documentation
+├── genai-daily-career-briefing.json   # ← Complete n8n workflow (import this)
+├── docker-compose.yml                 # Self-hosted n8n via Docker
+├── .env.example                       # Environment variable template
+├── .gitignore                         # Ignores .env and sensitive files
+├── README.md                          # This file
+└── assets/
+    ├── how_it_works_sketch.png        # Pipeline overview (pencil sketch)
+    ├── architecture_sketch.png        # System architecture (pencil sketch)
+    ├── setup_steps.png                # Quick start visual (pencil sketch)
+    ├── future_roadmap.png             # Roadmap diagram (pencil sketch)
+    ├── email_preview.png              # Sample email output screenshot
+    └── hero_banner.png                # Project banner image
 ```
 
 ---
 
 ## 🏷️ Project Tags
 
-<br/>
-
 <div align="center">
 
 | Area | Tags |
 | :--- | :--- |
-| **Automation** | ![n8n](https://img.shields.io/badge/n8n-FF6D5A?style=flat-square&logo=n8n&logoColor=white) ![n8n Workflow](https://img.shields.io/badge/n8n--workflow-FF6D5A?style=flat-square&logo=n8n&logoColor=white) ![Workflow Automation](https://img.shields.io/badge/Workflow--Automation-6366F1?style=flat-square) ![Email Automation](https://img.shields.io/badge/Email--Automation-6366F1?style=flat-square) |
-| **Artificial Intelligence** | ![Generative AI](https://img.shields.io/badge/Generative--AI-4285F4?style=flat-square&logo=google&logoColor=white) ![Agentic AI](https://img.shields.io/badge/Agentic--AI-4285F4?style=flat-square&logo=google&logoColor=white) ![Google Gemini](https://img.shields.io/badge/Google--Gemini-4285F4?style=flat-square&logo=googlegemini&logoColor=white) ![LLM](https://img.shields.io/badge/LLM-3b82f6?style=flat-square) ![AI Agent](https://img.shields.io/badge/AI--Agent-3b82f6?style=flat-square) |
-| **Integrations** | ![Gmail API](https://img.shields.io/badge/Gmail--API-EA4335?style=flat-square&logo=gmail&logoColor=white) ![Hacker News API](https://img.shields.io/badge/Hacker--News--API-FF6600?style=flat-square&logo=ycombinator&logoColor=white) ![Google News](https://img.shields.io/badge/Google--News-4285F4?style=flat-square&logo=googlenews&logoColor=white) ![RSS Feed](https://img.shields.io/badge/RSS--Feed-FFA500?style=flat-square&logo=rss&logoColor=white) |
-| **Career & Education** | ![Career Development](https://img.shields.io/badge/Career--Development-10B981?style=flat-square) ![AI Career](https://img.shields.io/badge/AI--Career-10B981?style=flat-square) ![Daily Briefing](https://img.shields.io/badge/Daily--Briefing-10B981?style=flat-square) |
-| **Development Style** | ![No Code](https://img.shields.io/badge/No--Code-8B5CF6?style=flat-square) ![Low Code](https://img.shields.io/badge/Low--Code-8B5CF6?style=flat-square) |
+| **Automation** | ![n8n](https://img.shields.io/badge/n8n-FF6D5A?style=flat-square&logo=n8n&logoColor=white) ![Workflow Automation](https://img.shields.io/badge/Workflow--Automation-6366F1?style=flat-square) ![Email Automation](https://img.shields.io/badge/Email--Automation-6366F1?style=flat-square) |
+| **Artificial Intelligence** | ![Generative AI](https://img.shields.io/badge/Generative--AI-4285F4?style=flat-square&logo=google&logoColor=white) ![Agentic AI](https://img.shields.io/badge/Agentic--AI-4285F4?style=flat-square&logo=google&logoColor=white) ![Google Gemini](https://img.shields.io/badge/Google--Gemini-4285F4?style=flat-square&logo=googlegemini&logoColor=white) ![LLM](https://img.shields.io/badge/LLM-3b82f6?style=flat-square) |
+| **Integrations** | ![Gmail API](https://img.shields.io/badge/Gmail--API-EA4335?style=flat-square&logo=gmail&logoColor=white) ![Hacker News](https://img.shields.io/badge/Hacker--News--API-FF6600?style=flat-square&logo=ycombinator&logoColor=white) ![Google News](https://img.shields.io/badge/Google--News-4285F4?style=flat-square&logo=googlenews&logoColor=white) ![RSS Feed](https://img.shields.io/badge/RSS--Feed-FFA500?style=flat-square&logo=rss&logoColor=white) |
+| **Career & Learning** | ![Career Development](https://img.shields.io/badge/Career--Development-10B981?style=flat-square) ![AI Career](https://img.shields.io/badge/AI--Career-10B981?style=flat-square) ![Daily Briefing](https://img.shields.io/badge/Daily--Briefing-10B981?style=flat-square) |
+| **Dev Style** | ![No Code](https://img.shields.io/badge/No--Code-8B5CF6?style=flat-square) ![Low Code](https://img.shields.io/badge/Low--Code-8B5CF6?style=flat-square) ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white) |
 
 </div>
 
-<br/>
+---
 
+## 🚀 Future Improvements
 
-## ?? Future Roadmap
+<div align="center">
 
-While this is a minor portfolio project demonstrating core AI integration concepts, there are several ways it can be expanded in the future:
-*   **Vector Database Integration (RAG):** Connect to Pinecone or Qdrant to store historical articles, allowing the AI to reference past context and detect long-term industry trends.
-*   **Web Scraping Node:** Instead of relying just on RSS summaries, implement a Puppeteer/HTTP node to scrape the full article text before feeding it to Gemini for deeper analysis.
-*   **Multi-Agent Architecture:** Use advanced LangChain nodes to deploy a 'Researcher Agent' to fetch data and a 'Writer Agent' to draft the email, passing data between them.
+![Future Roadmap](assets/future_roadmap.png)
 
+*↑ Planned evolution from single-agent pipeline to full multi-agent system — pencil sketch*
+
+</div>
+
+### Phase 1 — Core Extensions
+
+| Improvement | Description |
+|:------------|:------------|
+| **🗄️ Vector Database (RAG)** | Connect to **Pinecone** or **Qdrant** to store historical article embeddings. The LLM can then reference past context to detect long-term industry trends and avoid repeating insights from previous briefings. |
+| **🕷️ Full Article Scraping** | Replace RSS summary text with a **Puppeteer / HTTP Request node** that fetches the full article body before passing it to Gemini — enabling much deeper, nuanced analysis instead of headline-only summaries. |
+| **📰 More News Sources** | Add **Dev.to**, **Towards Data Science**, **ArXiv AI abstracts**, or **LinkedIn Pulse** as additional RSS/API sources to broaden coverage. |
+
+### Phase 2 — Multi-Agent Architecture
+
+| Improvement | Description |
+|:------------|:------------|
+| **🔍 Researcher Agent** | Use n8n's **LangChain agent nodes** to deploy a dedicated Researcher Agent that autonomously decides which sources to query, ranks articles by relevance, and summarizes findings for the Writer. |
+| **✍️ Writer Agent** | A separate Writer Agent receives the ranked research and drafts a personalized briefing with a consistent editorial voice — using memory of your past preferences. |
+| **✅ Editor / Fact-Check Agent** | A final verification agent that cross-references claims in the briefing against a trusted knowledge base before the email is dispatched. |
+
+### Phase 3 — Multi-Channel Delivery
+
+| Improvement | Description |
+|:------------|:------------|
+| **💬 Slack / Discord Bot** | Add a Webhook output node to push the briefing as a formatted message to your team's **Slack** or **Discord** channel every morning. |
+| **🎙️ Audio Podcast Digest** | Pipe the briefing text through a **Text-to-Speech node** (ElevenLabs or Google TTS) to generate a short audio podcast you can listen to on your commute. |
+| **📊 Web Dashboard** | Build a lightweight **Next.js** frontend that reads briefing history from a database and visualizes sentiment trends, trending tools, and skill frequency over time. |
+| **🌍 Multi-Language Support** | Add a translation step after the AI parser to deliver the briefing in the user's preferred language using Gemini's translation capabilities. |
+| **📅 Weekly Summary** | Add a separate Saturday workflow that aggregates the week's 5 briefings into a single executive summary email with trend highlights. |
+
+---
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/my-improvement`
+3. Commit your changes: `git commit -m "feat: add Slack delivery channel"`
+4. Push and open a Pull Request
+
+Feedback and workflow forks are welcome! If you add a new source or delivery channel, please share the `.json` workflow export.
+
+---
+
+<div align="center">
+
+**Built with ❤️ using n8n + Google Gemini**
+
+*Star ⭐ the repo if this saves you time every morning!*
+
+</div>

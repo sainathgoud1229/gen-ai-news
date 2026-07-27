@@ -1,0 +1,335 @@
+{
+  "name": "GenAI & Agentic AI Daily Career Briefing",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "id": "90351921-f0b9-4345-96ff-183ce9a02bda",
+      "name": "Daily Trigger - News",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        224,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://news.google.com/rss/search?q=%22agentic+AI%22+OR+%22generative+AI%22+OR+%22AI+agent%22+OR+%22AI+tool%22+OR+%22AI+regulation%22+OR+%22AI+policy%22&hl=en-US&gl=US&ceid=US:en",
+        "options": {}
+      },
+      "id": "c2def01e-6852-4a18-9a6a-835f557a6836",
+      "name": "Fetch Google News RSS",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        448,
+        208
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "dd7d4b7c-115b-4269-b373-f66bf0748594",
+      "name": "Combine News Sources",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        672,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "id": "eed54d77-5620-4a34-a192-5ac422c77a36",
+      "name": "Daily Trigger - HN",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        16
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://hn.algolia.com/api/v1/search_by_date?query=AI%20agent&tags=story&hitsPerPage=20",
+        "options": {}
+      },
+      "id": "5cbde002-9c84-4641-a6cb-8c7b39381aba",
+      "name": "Fetch Hacker News",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        224,
+        16
+      ]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "hits",
+        "options": {
+          "destinationFieldName": "story"
+        }
+      },
+      "id": "a8179141-9c0e-48c0-be64-e09b3d28d6ad",
+      "name": "Split HN Hits",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        448,
+        16
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst seen = $getWorkflowStaticData('global');\nif (!seen.sentLinks) seen.sentLinks = [];\n\nconst cutoffMs = Date.now() - 24 * 60 * 60 * 1000;\nconst normalized = [];\n\nfor (const item of $input.all()) {\n  const j = item.json;\n  let title, link, publishedMs;\n\n  if (j.story) {\n    title = j.story.title;\n    link = j.story.url || ('https://news.ycombinator.com/item?id=' + j.story.objectID);\n    publishedMs = j.story.created_at ? new Date(j.story.created_at).getTime() : Date.now();\n  } else {\n    title = j.title;\n    link = j.link;\n    publishedMs = j.isoDate ? new Date(j.isoDate).getTime() : (j.pubDate ? new Date(j.pubDate).getTime() : Date.now());\n  }\n\n  if (!title || !link) continue;\n  if (seen.sentLinks.includes(link)) continue;\n  if (publishedMs < cutoffMs) continue;\n\n  normalized.push({ title, link, publishedMs });\n  seen.sentLinks.push(link);\n}\n\nif (seen.sentLinks.length > 500) {\n  seen.sentLinks = seen.sentLinks.slice(-500);\n}\n\nnormalized.sort((a, b) => b.publishedMs - a.publishedMs);\nconst top = normalized.slice(0, 15);\n\nconst articlesText = top.map((a, i) => (i + 1) + '. ' + a.title + ' - ' + a.link).join('\\n');\n\nreturn [{ json: { articlesText: articlesText, count: top.length } }];\n"
+      },
+      "id": "3e34c2b6-dbeb-4282-922d-43ceb8be39e4",
+      "name": "Dedupe, Filter & Build Digest",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.count }}",
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              },
+              "rightValue": 0
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "61d1b7b0-d7d8-4988-8e90-a9097f36f854",
+      "name": "Has New Items?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        1120,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are an expert AI Career Analyst writing a daily GenAI/Agentic AI briefing. \nAnalyze the following headlines and extract a structured JSON object.\nYou MUST output ONLY a valid JSON object. Do not include markdown formatting, backticks, or text outside the JSON.\n\nThe JSON must match this exact schema:\n{\n  \"sentiment\": {\n    \"score\": \"Bullish, Bearish, or Neutral\",\n    \"reason\": \"1 sentence explanation of the market mood\"\n  },\n  \"top_news\": [\n    {\"headline\": \"title\", \"impact\": \"1-2 lines on why it matters\"}\n  ],\n  \"models_tools\": [\n    \"model/tool name 1\", \"model/tool name 2\"\n  ],\n  \"skills\": [\n    {\"skill\": \"Skill Name\", \"reason\": \"Why it's relevant this week\"}\n  ],\n  \"industry_impact\": \"2-3 sentences on how this affects engineering roles\"\n}\n\nHeadlines:\n{{ $json.articlesText }}",
+        "batching": {}
+      },
+      "id": "5744fbf8-0ed5-4c50-8cc2-04039fa92023",
+      "name": "Build Career Briefing",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        1344,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.1-flash-lite",
+        "options": {}
+      },
+      "id": "284d729d-e67e-48d8-b6f7-223021bbfb94",
+      "name": "Gemini Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        1424,
+        336
+      ],
+      "notesInFlow": true,
+      "notes": "THIS IS WORKFLOW FOR LATEST NEWS"
+    },
+    {
+      "parameters": {
+        "jsCode": "\ntry {\n  let parsed = $input.first().json.text;\n  if (typeof parsed === 'string') {\n    // Strip markdown JSON wrappers if the LLM leaked them\n    parsed = parsed.replace(/^```json/, '').replace(/```$/, '').trim();\n    parsed = JSON.parse(parsed);\n  }\n  \n  let html = `<div style=\"font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #333;\">`;\n  \n  // Header & Sentiment\n  html += `<h2 style=\"color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 5px;\">Market Sentiment: ${parsed.sentiment.score}</h2>`;\n  html += `<p style=\"font-style: italic; color: #555;\">${parsed.sentiment.reason}</p>`;\n  \n  // Top News\n  html += `<h3 style=\"color: #2980b9;\">\ud83d\udd25 Top News Today</h3><ul>`;\n  for (const item of parsed.top_news) {\n    html += `<li style=\"margin-bottom: 10px;\"><strong>${item.headline}</strong><br><span style=\"font-size: 0.9em; color: #666;\">${item.impact}</span></li>`;\n  }\n  html += `</ul>`;\n  \n  // Models & Tools\n  html += `<h3 style=\"color: #8e44ad;\">\ud83e\udd16 New Models & Tools</h3><ul>`;\n  if (parsed.models_tools && parsed.models_tools.length > 0) {\n    for (const tool of parsed.models_tools) {\n      html += `<li>${tool}</li>`;\n    }\n  } else {\n    html += `<li>No major releases in today's headlines.</li>`;\n  }\n  html += `</ul>`;\n  \n  // Skills\n  html += `<h3 style=\"color: #27ae60;\">\ud83d\udee0\ufe0f Skills to Improve</h3><ul>`;\n  for (const skill of parsed.skills) {\n    html += `<li><strong>${skill.skill}:</strong> ${skill.reason}</li>`;\n  }\n  html += `</ul>`;\n  \n  // Impact\n  html += `<h3 style=\"color: #d35400;\">\ud83d\udcbc Industry Impact</h3>`;\n  html += `<p>${parsed.industry_impact}</p>`;\n  \n  html += `</div>`;\n  \n  return [{ json: { htmlEmail: html } }];\n} catch (e) {\n  return [{ json: { htmlEmail: \"<p>Error parsing AI Output. Raw text:</p><pre>\" + $input.first().json.text + \"</pre>\" } }];\n}\n"
+      },
+      "id": "7626ef91-1234-4567-8901-abcdef123456",
+      "name": "Format HTML Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1550,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "YOUR_EMAIL@gmail.com",
+        "subject": "=GenAI & Agentic AI Daily Career Briefing - {{ $now.toFormat(\"MMMM d, yyyy\") }}",
+        "message": "={{ $json.htmlEmail }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "794bc71a-84df-4948-988d-8fb14732149b",
+      "name": "Send Email Digest",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1800,
+        112
+      ]
+    }
+  ],
+  "connections": {
+    "Daily Trigger - News": {
+      "main": [
+        [
+          {
+            "node": "Fetch Google News RSS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Google News RSS": {
+      "main": [
+        [
+          {
+            "node": "Combine News Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine News Sources": {
+      "main": [
+        [
+          {
+            "node": "Dedupe, Filter & Build Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily Trigger - HN": {
+      "main": [
+        [
+          {
+            "node": "Fetch Hacker News",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Hacker News": {
+      "main": [
+        [
+          {
+            "node": "Split HN Hits",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split HN Hits": {
+      "main": [
+        [
+          {
+            "node": "Combine News Sources",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Dedupe, Filter & Build Digest": {
+      "main": [
+        [
+          {
+            "node": "Has New Items?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has New Items?": {
+      "main": [
+        [
+          {
+            "node": "Build Career Briefing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Career Briefing": {
+      "main": [
+        [
+          {
+            "node": "Format HTML Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Build Career Briefing",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format HTML Email": {
+      "main": [
+        [
+          {
+            "node": "Send Email Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "instanceId": "genai-daily-career-briefing"
+  }
+}

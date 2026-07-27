@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: genai-n8n-server
+    env: docker
+    region: ohio
+    plan: free
+    dockerCommand: "n8n"
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: N8N_PORT
+        value: 10000
+      - key: PORT
+        value: 10000
+      - key: N8N_PROTOCOL
+        value: https
+      - key: N8N_HOST
+        value: genai-n8n-server.onrender.com # Change this if your render URL is different
+      - key: WEBHOOK_URL
+        value: https://genai-n8n-server.onrender.com/
+      - key: GENERIC_TIMEZONE
+        value: Asia/Kolkata
+    disk:
+      name: n8n-data
+      mountPath: /home/node/.n8n
+      sizeGB: 1

@@ -1,0 +1,21 @@
+version: "3.8"
+
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    restart: always
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=${SUBDOMAIN:-localhost}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - NODE_ENV=production
+      - WEBHOOK_URL=http://${SUBDOMAIN:-localhost}:5678/
+      # You can pass your existing .env variables into the container here if needed:
+      # - GEMINI_API_KEY=${GEMINI_API_KEY}
+    volumes:
+      - n8n_data:/home/node/.n8n
+
+volumes:
+  n8n_data:

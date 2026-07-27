@@ -1,0 +1,26 @@
+# ========================
+# Secrets & Credentials
+# ========================
+.env
+.env.local
+.env.*.local
+
+# ========================
+# n8n Credentials Store
+# ========================
+.n8n/
+
+# ========================
+# OS & Editor files
+# ========================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ========================
+# Node modules (if any)
+# ========================
+node_modules/
